@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NorskAI Reader (No Python)</title>
+    <link rel="manifest" href="manifest.json"> 
+
+    <meta name="theme-color" content="#2c3e50">
+
+    <style>
+        /* CSS STYLING */
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #f4f4f9; }
+        nav { background: #2c3e50; color: white; padding: 1rem; display: flex; justify-content: space-between; align-items: center; }
+        nav button { background: transparent; border: 1px solid white; color: white; padding: 5px 15px; cursor: pointer; margin-left: 10px; }
+        nav button:hover { background: white; color: #2c3e50; }
+
+        .section { display: none; padding: 20px; max-width: 900px; margin: 0 auto; }
+        .section.active { display: block; }
+
+        /* Grid */
+        .grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); cursor: pointer; transition: 0.2s; position: relative; }
+        .card:hover { transform: translateY(-3px); }
+        .badge { background: #3498db; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; }
+
+        /* Reader */
+        .reader-header { display: flex; align-items: center; gap: 15px; margin-bottom: 15px; }
+        .reader-content { display: flex; gap: 20px; margin-top: 20px; background: white; padding: 20px; border-radius: 8px; flex-wrap: wrap; }
+        .text-content { font-size: 1.2rem; line-height: 1.6; color: #333; white-space: pre-wrap; flex: 1; min-width: 300px; }
+        .audio-btn { background: #27ae60; color: white; border: none; padding: 8px 15px; cursor: pointer; border-radius: 4px; font-size: 1rem;}
+
+        /* Context Menu */
+        .context-menu { display: none; position: absolute; z-index: 1000; background: #fff; border: 1px solid #ccc; box-shadow: 2px 2px 10px rgba(0,0,0,0.2); width: 150px; }
+        .context-menu div { padding: 10px; cursor: pointer; }
+        .context-menu div:hover { background-color: #f0f0f0; }
+
+        /* Tables */
+        table { width: 100%; border-collapse: collapse; background: white; margin-top: 10px; }
+        th, td { padding: 12px; border-bottom: 1px solid #ddd; text-align: left; }
+        th { background-color: #f8f9fa; }
+
+        /* Generator */
+        .form-group { margin-bottom: 15px; }
+        input, select { padding: 10px; width: 100%; box-sizing: border-box; margin-top: 5px; }
+        #gen-btn { padding: 10px 20px; background: #e67e22; color: white; border: none; cursor: pointer; width: 100%; font-size: 1.1em; }
+        
+        #loader { margin-top: 10px; font-style: italic; color: #555; }
+    </style>
+</head>
+<body>
+
+    <nav>
+        <h1>NorskAI (Local)</h1>
+        <div>
+            <button onclick="showSection('home')">Home</button>
+            <button onclick="showSection('generate')">Generator</button>
+            <button onclick="showSection('vocab')">Vocabulary</button>
+
+            <span style="margin-left: 20px; border-left: 1px solid #aaa; padding-left: 10px;">
+            <button onclick="downloadData()" style="font-size: 0.8em;">⬇️ Save File</button>
+            <button onclick="document.getElementById('file-input').click()" style="font-size: 0.8em;">⬆️ Load File</button>
+            <input type="file" id="file-input" style="display: none;" onchange="loadData(this)">
+        </span>
+        </div>
+    </nav>
+
+    <div id="home" class="section active">
+        <h2>Your Stories</h2>
+        <p style="font-size:0.9em; color:#666;">(Right-click a story to delete it)</p>
+        <div id="story-list" class="grid-container"></div>
+    </div>
+
+    <div id="read" class="section">
+        <button onclick="showSection('home')" style="cursor:pointer; margin-bottom:10px;">← Back</button>
+        <div class="reader-header">
+            <h2 id="read-title" style="margin:0;">Title</h2>
+            <span id="read-level" class="badge">A1</span>
+            <button onclick="playFullStory()" class="audio-btn">🔊 Play Story</button>
+        </div>
+        <div class="reader-content">
+            <img id="read-image" src="" alt="Story Image" width="250" height="250" style="object-fit: cover; border-radius: 4px;">
+            <div id="read-text" class="text-content"></div>
+        </div>
+    </div>
+
+    <div id="generate" class="section">
+        <h2>Generate New Story</h2>
+        <div class="form-group">
+            <label>Topic:</label>
+            <input type="text" id="topic-input" placeholder="e.g., Buying groceries in Oslo">
+        </div>
+        <div class="form-group">
+            <label>Difficulty Level:</label>
+            <select id="level-input">
+                <option value="A1">A1 (Beginner - Simple sentences)</option>
+                <option value="A2">A2 (Elementary)</option>
+                <option value="B1">B1 (Intermediate)</option>
+                <option value="B2">B2 (Upper Intermediate)</option>
+            </select>
+        </div>
+        <button id="gen-btn" onclick="generateStoryAI()">Generate Story</button>
+        <div id="loader" style="display:none;">Connecting to Gemini... writing story... painting image...</div>
+    </div>
+
+    <div id="vocab" class="section">
+        <h2>Vocabulary Review</h2>
+        <table>
+            <thead><tr><th>Norwegian</th><th>English</th><th>Audio</th></tr></thead>
+            <tbody id="vocab-table"></tbody>
+        </table>
+    </div>
+
+    <div id="context-menu" class="context-menu">
+        <div onclick="handleMenu('read')">🔊 Read</div>
+        <div onclick="handleMenu('translate')">🌐 Translate</div>
+        <div onclick="handleMenu('save')">💾 Save & Translate</div>
+    </div>
+
+    <script>
+        // ==========================================
+        // CONFIGURATION
+        // ==========================================
+        const API_KEY = "AIzaSyAkSF74pCGaQfr0AM1ococpNx_eLt9_yvI"; 
+        
+        // Global Variables
+        let stories = JSON.parse(localStorage.getItem('stories') || '[]');
+        let vocabulary = JSON.parse(localStorage.getItem('vocabulary') || '[]');
+        let selectedText = "";
+        let currentStoryText = "";
+        let voices = [];
+
+        // ==========================================
+        // INITIALIZATION
+        // ==========================================
+        document.addEventListener('DOMContentLoaded', () => {
+            loadStories();
+            loadVocabulary();
+            
+            // Init Voices
+            window.speechSynthesis.onvoiceschanged = () => {
+                voices = window.speechSynthesis.getVoices();
+            };
+
+            // Click outside to close menu
+            document.addEventListener('click', () => {
+                document.getElementById('context-menu').style.display = 'none';
+            });
+            
+            // Context Menu Logic
+            const textDiv = document.getElementById('read-text');
+            textDiv.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                const sel = window.getSelection().toString().trim();
+                if (sel) {
+                    selectedText = sel;
+                    const menu = document.getElementById('context-menu');
+                    menu.style.top = `${e.pageY}px`;
+                    menu.style.left = `${e.pageX}px`;
+                    menu.style.display = 'block';
+                }
+            });
+        });
+
+        function showSection(id) {
+            document.querySelectorAll('.section').forEach(el => el.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            if(id === 'home') loadStories();
+            if(id === 'vocab') loadVocabulary();
+        }
+
+        // ==========================================
+        // DATABASE (LOCAL STORAGE)
+        // ==========================================
+        function saveStoriesToDB() {
+            localStorage.setItem('stories', JSON.stringify(stories));
+        }
+        function saveVocabToDB() {
+            localStorage.setItem('vocabulary', JSON.stringify(vocabulary));
+        }
+
+        // ==========================================
+        // API CALLS (GEMINI DIRECT)
+        // ==========================================
+        async function callGemini(prompt) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
+    const payload = {
+        contents: [{ parts: [{ text: prompt }] }]
+    };
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    
+    // *** UPDATED DEBUGGING LOGIC ***
+    if (!response.ok) {
+        // Read the full error body (usually contains the reason)
+        const errorBody = await response.text(); 
+        console.error("API Call Failed - HTTP Status:", response.status);
+        console.error("API Error Body:", errorBody);
+        
+        let customMessage = `HTTP Status ${response.status}. See console for details.`;
+        
+        // Provide immediate feedback for common errors
+        if (response.status === 400) {
+            customMessage = 'HTTP 400: Check your API Key (Invalid or Missing).';
+        } else if (response.status === 429) {
+            customMessage = 'HTTP 429: Quota Limit Exceeded. Try again later.';
+        }
+
+        // Throw an error with the detailed message
+        throw new Error(`API Error: ${customMessage}`);
+    }
+    // --- End of UPDATED DEBUGGING LOGIC ---
+
+    const data = await response.json();
+    return data.candidates[0].content.parts[0].text;
+}
+
+        // ==========================================
+        // STORY LOGIC
+        // ==========================================
+        async function generateStoryAI() {
+            const topic = document.getElementById('topic-input').value;
+            const level = document.getElementById('level-input').value;
+            const loader = document.getElementById('loader');
+            
+            if(!topic) return alert("Please enter a topic");
+            if(API_KEY.includes("PASTE")) return alert("Please edit the file and add your API Key!");
+
+            loader.style.display = 'block';
+
+        
+            const prompt = `
+            You are a story generator. Write a short story in Norwegian about '${topic}'. 
+            Difficulty Level: ${level}.
+            Constraints:
+            - The story must be at least 15 sentences long.
+            - Output ONLY valid JSON format. Do not use Markdown blocks.
+            - JSON structure: { "title": "...", "story": "...", "image_prompt": "Short English description for image generation" }
+            `;
+            
+
+            try {
+                let text = await callGemini(prompt);
+                // Clean up if Gemini adds markdown
+                text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+                const data = JSON.parse(text);
+
+                // Generate Image URL
+                const imgPrompt = encodeURIComponent(data.image_prompt);
+                const imageUrl = `https://image.pollinations.ai/prompt/${imgPrompt}?width=250&height=250&nologo=true`;
+
+                const newStory = {
+                    id: Date.now(),
+                    title: data.title,
+                    content: data.story,
+                    level: level,
+                    image: imageUrl
+                };
+
+                stories.push(newStory);
+                saveStoriesToDB();
+                loader.style.display = 'none';
+                openStory(newStory.id);
+
+            } catch (e) {
+                loader.style.display = 'none';
+                alert("Error generating story: " + e.message);
+            }
+        }
+
+        function loadStories() {
+            const container = document.getElementById('story-list');
+            container.innerHTML = '';
+            stories.forEach(story => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.innerHTML = `<strong>${story.title}</strong><br><br><span class="badge">${story.level}</span>`;
+                card.onclick = () => openStory(story.id);
+                card.oncontextmenu = (e) => {
+                    e.preventDefault();
+                    if(confirm("Delete this story?")) {
+                        stories = stories.filter(s => s.id !== story.id);
+                        saveStoriesToDB();
+                        loadStories();
+                    }
+                };
+                container.appendChild(card);
+            });
+        }
+
+        function openStory(id) {
+            const story = stories.find(s => s.id === id);
+            if(!story) return;
+            
+            document.getElementById('read-title').innerText = story.title;
+            document.getElementById('read-level').innerText = story.level;
+            document.getElementById('read-text').innerText = story.content;
+            document.getElementById('read-image').src = story.image;
+            currentStoryText = story.content;
+            showSection('read');
+        }
+
+        // ==========================================
+        // TRANSLATE & VOCAB LOGIC
+        // ==========================================
+        async function handleMenu(action) {
+            if(!selectedText) return;
+
+            if(action === 'read') {
+                speakText(selectedText);
+            }
+            else if (action === 'translate' || action === 'save') {
+                try {
+                    const prompt = `Translate this Norwegian text to English. Return ONLY the translation: "${selectedText}"`;
+                    const translation = await callGemini(prompt);
+                    
+                    if (action === 'translate') {
+                        alert("Meaning: " + translation.trim());
+                    } 
+                    else {
+                        vocabulary.push({ text: selectedText, meaning: translation.trim() });
+                        saveVocabToDB();
+                        alert("Saved to vocabulary!");
+                    }
+                } catch (e) {
+                    alert("Translation failed: " + e.message);
+                }
+            }
+        }
+
+        function loadVocabulary() {
+            const tbody = document.getElementById('vocab-table');
+            tbody.innerHTML = '';
+            vocabulary.forEach(v => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td>${v.text}</td><td>${v.meaning}</td><td><button onclick="speakText('${v.text}')">🔊</button></td>`;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // ==========================================
+        // SPEECH LOGIC
+        // ==========================================
+        function getNorwegianVoice() {
+            voices = window.speechSynthesis.getVoices();
+            return voices.find(v => v.lang === 'nb-NO' || v.lang === 'no-NO' || v.name.includes('Norsk') || v.name.includes('Norwegian'));
+        }
+
+        function playFullStory() {
+            speakText(currentStoryText);
+        }
+
+        function speakText(text) {
+            window.speechSynthesis.cancel();
+            const ut = new SpeechSynthesisUtterance(text);
+            const noVoice = getNorwegianVoice();
+            if(noVoice) ut.voice = noVoice;
+            else ut.lang = 'nb-NO';
+            window.speechSynthesis.speak(ut);
+        }
+
+        // ==========================================
+        // EXPORT / IMPORT LOGIC (Save to File)
+        // ==========================================
+
+        // 1. Download data as a JSON file
+        function downloadData() {
+            const data = {
+                stories: stories,
+                vocab: vocabulary
+            };
+            const json = JSON.stringify(data, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'norwegian_backup.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        // 2. Load data from a JSON file
+        function loadData(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    
+                    // Update variables
+                    if(data.stories) stories = data.stories;
+                    if(data.vocab) vocabulary = data.vocab;
+                    
+                    // Save to browser memory
+                    saveStoriesToDB();
+                    saveVocabToDB();
+                    
+                    // Refresh screen
+                    loadStories();
+                    alert("Data loaded successfully!");
+                } catch (err) {
+                    alert("Error loading file: " + err);
+                }
+            };
+            reader.readAsText(file);
+        }
+    </script>
+</body>
+</html>
